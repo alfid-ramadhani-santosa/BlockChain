@@ -150,25 +150,6 @@ function SolutionCard({ solution, index, onApply }: SolutionCardProps) {
             </div>
             <div className="text-xs text-slate-400">Lines</div>
           </div>
-          <button
-            onClick={handleApply}
-            style={{
-              background: applied ? '#22c55e' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 8,
-              padding: '7px 14px',
-              fontSize: '0.78rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              letterSpacing: '0.5px',
-              transition: 'all 0.2s',
-              whiteSpace: 'nowrap',
-              boxShadow: applied ? '0 2px 8px rgba(34,197,94,0.4)' : '0 2px 8px rgba(99,102,241,0.3)',
-            }}
-          >
-            {applied ? '✅ Diterapkan!' : '⚡ Terapkan'}
-          </button>
           <div className={`text-slate-400 text-lg transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>
             ▾
           </div>
@@ -198,7 +179,7 @@ function SolutionCard({ solution, index, onApply }: SolutionCardProps) {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 overflow-x-auto pb-2">
+          <div className="flex flex-col sm:flex-row gap-3 sm:overflow-x-auto pb-2">
             {solution.steps.map((step, si) => (
               <div
                 key={si}
@@ -240,6 +221,29 @@ function SolutionCard({ solution, index, onApply }: SolutionCardProps) {
           </div>
         </div>
       )}
+
+      {/* Terapkan button always visible at bottom */}
+      <div className="px-4 sm:px-6 py-3 border-t border-slate-100">
+        <button
+          onClick={handleApply}
+          style={{
+            background: applied ? '#22c55e' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 10,
+            padding: '11px 0',
+            fontSize: '0.875rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            letterSpacing: '0.5px',
+            transition: 'all 0.2s',
+            width: '100%',
+            boxShadow: applied ? '0 2px 12px rgba(34,197,94,0.4)' : '0 2px 12px rgba(99,102,241,0.3)',
+          }}
+        >
+          {applied ? '✅ Diterapkan!' : '⚡ Terapkan Solusi Ini'}
+        </button>
+      </div>
     </div>
   );
 }

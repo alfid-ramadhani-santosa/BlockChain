@@ -54,6 +54,7 @@ function PieceGrid({
 
   // Mouse
   const onMouseDown = useCallback((e: React.MouseEvent) => {
+    if (Date.now() - lastTouchTimeRef.current < 500) return;
     const cell = getCellFromPoint(e.clientX, e.clientY);
     if (!cell) return;
     const [row, col] = cell;
@@ -66,6 +67,7 @@ function PieceGrid({
   }, [getCellFromPoint, onChange]);
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
+    if (Date.now() - lastTouchTimeRef.current < 500) return;
     paintCell(e.clientX, e.clientY);
   }, [paintCell]);
 
@@ -74,12 +76,16 @@ function PieceGrid({
     paintModeRef.current = null;
   }, []);
 
-  // Touch — non-passive for Chrome mobile fix
+  // Touch — ALL non-passive to suppress Chrome simulated mouse events
+  const lastTouchTimeRef = useRef(0);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
     const onTouchStart = (e: TouchEvent) => {
+      e.preventDefault(); // suppress scroll + simulated mouse events
+      lastTouchTimeRef.current = Date.now();
       const touch = e.touches[0];
       const cell = getCellFromPoint(touch.clientX, touch.clientY);
       if (!cell) return;
@@ -93,18 +99,21 @@ function PieceGrid({
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      e.preventDefault(); // non-passive — prevents scroll interrupting draw
+      e.preventDefault();
+      lastTouchTimeRef.current = Date.now();
       paintCell(e.touches[0].clientX, e.touches[0].clientY);
     };
 
-    const onTouchEnd = () => {
+    const onTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      lastTouchTimeRef.current = Date.now();
       isPaintingRef.current = false;
       paintModeRef.current = null;
     };
 
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
     return () => {
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);

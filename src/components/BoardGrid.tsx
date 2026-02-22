@@ -23,14 +23,17 @@ export default function BoardGrid({ board, onCellChange, readonly = false }: Boa
   const paintModeRef = useRef<number | null>(null);
   const isPaintingRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  // Keep a ref to board so touch handlers always have fresh data
   const boardRef = useRef(board);
   boardRef.current = board;
 
+  // Track last touch time to suppress Chrome's simulated mouse events
+  const lastTouchTimeRef = useRef(0);
+  const TOUCH_MOUSE_DELAY = 500; // ms — ignore mouse events within this window after touch
+
   const getCellFromPoint = useCallback((clientX: number, clientY: number): [number, number] | null => {
-    const container = containerRef.current;
-    if (!container) return null;
-    const rect = container.getBoundingClientRect();
+    const el = containerRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
     const col = Math.floor(((clientX - rect.left) / rect.width) * 8);
     const row = Math.floor(((clientY - rect.top) / rect.height) * 8);
     if (row < 0 || row >= 8 || col < 0 || col >= 8) return null;
@@ -47,9 +50,11 @@ export default function BoardGrid({ board, onCellChange, readonly = false }: Boa
     }
   }, [getCellFromPoint, onCellChange]);
 
-  // ── Mouse events (desktop) ─────────────────────────────────────────────
+  // ── Mouse events (desktop only — ignored if recently touched) ───────────
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if (readonly) return;
+    // Suppress simulated mouse events from touch
+    if (Date.now() - lastTouchTimeRef.current < TOUCH_MOUSE_DELAY) return;
     const cell = getCellFromPoint(e.clientX, e.clientY);
     if (!cell) return;
     const [row, col] = cell;
@@ -60,24 +65,24 @@ export default function BoardGrid({ board, onCellChange, readonly = false }: Boa
   }, [getCellFromPoint, onCellChange, readonly]);
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
+    if (Date.now() - lastTouchTimeRef.current < TOUCH_MOUSE_DELAY) return;
     paintCell(e.clientX, e.clientY);
   }, [paintCell]);
 
-  const stopPainting = useCallback(() => {
+  const stopMouse = useCallback(() => {
     isPaintingRef.current = false;
     paintModeRef.current = null;
   }, []);
 
-  // ── Touch events — registered imperatively with passive:false ──────────
-  // This is the fix for Chrome mobile: React's synthetic onTouchMove is passive
-  // by default in modern browsers, so e.preventDefault() is ignored and the page
-  // scroll interrupts the gesture. We add the listener manually with passive:false.
+  // ── Touch events — non-passive so preventDefault() actually works ────────
   useEffect(() => {
     if (readonly) return;
     const el = containerRef.current;
     if (!el) return;
 
-    const handleTouchStart = (e: TouchEvent) => {
+    const onTouchStart = (e: TouchEvent) => {
+      e.preventDefault(); // prevent BOTH scroll AND simulated mouse events
+      lastTouchTimeRef.current = Date.now();
       const touch = e.touches[0];
       const cell = getCellFromPoint(touch.clientX, touch.clientY);
       if (!cell) return;
@@ -88,25 +93,28 @@ export default function BoardGrid({ board, onCellChange, readonly = false }: Boa
       onCellChange?.(row, col, newValue);
     };
 
-    const handleTouchMove = (e: TouchEvent) => {
-      e.preventDefault(); // ← works because listener is non-passive
-      const touch = e.touches[0];
-      paintCell(touch.clientX, touch.clientY);
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      lastTouchTimeRef.current = Date.now();
+      paintCell(e.touches[0].clientX, e.touches[0].clientY);
     };
 
-    const handleTouchEnd = () => {
+    const onTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      lastTouchTimeRef.current = Date.now();
       isPaintingRef.current = false;
       paintModeRef.current = null;
     };
 
-    el.addEventListener('touchstart', handleTouchStart, { passive: true });
-    el.addEventListener('touchmove', handleTouchMove, { passive: false }); // KEY FIX
-    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+    // ALL touch listeners non-passive to fully suppress mouse simulation
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
 
     return () => {
-      el.removeEventListener('touchstart', handleTouchStart);
-      el.removeEventListener('touchmove', handleTouchMove);
-      el.removeEventListener('touchend', handleTouchEnd);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
     };
   }, [getCellFromPoint, onCellChange, paintCell, readonly]);
 
@@ -117,13 +125,10 @@ export default function BoardGrid({ board, onCellChange, readonly = false }: Boa
       style={{ cursor: readonly ? 'default' : 'crosshair', touchAction: 'none' }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
-      onMouseUp={stopPainting}
-      onMouseLeave={stopPainting}
+      onMouseUp={stopMouse}
+      onMouseLeave={stopMouse}
     >
-      <div
-        className="grid w-full"
-        style={{ gridTemplateColumns: 'repeat(8, 1fr)', gap: '2px' }}
-      >
+      <div className="grid w-full" style={{ gridTemplateColumns: 'repeat(8, 1fr)', gap: '2px' }}>
         {board.map((row, r) =>
           row.map((cell, c) => {
             const colorClass = cell ? (COLOR_MAP[cell] || COLOR_MAP[1]) : '';

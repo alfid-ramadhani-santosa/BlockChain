@@ -1,5 +1,5 @@
 'use client';
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import type { PieceConfig } from '@/lib/types';
 
 const PIECE_COLORS = [
@@ -17,105 +17,121 @@ interface PieceEditorProps {
 
 function PieceGrid({
   piece,
-  pieceIdx,
   colorClass,
   onChange,
 }: {
   piece: PieceConfig;
-  pieceIdx: number;
   colorClass: string;
   onChange: (grid: number[][]) => void;
 }) {
   const paintModeRef = useRef<number | null>(null);
   const isPaintingRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef(piece.grid);
+  gridRef.current = piece.grid;
 
   const getCellFromPoint = useCallback((clientX: number, clientY: number): [number, number] | null => {
-    const container = containerRef.current;
-    if (!container) return null;
-    const rect = container.getBoundingClientRect();
-    const cellW = rect.width / 5;
-    const cellH = rect.height / 5;
-    const col = Math.floor((clientX - rect.left) / cellW);
-    const row = Math.floor((clientY - rect.top) / cellH);
+    const el = containerRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const col = Math.floor(((clientX - rect.left) / rect.width) * 5);
+    const row = Math.floor(((clientY - rect.top) / rect.height) * 5);
     if (row < 0 || row >= 5 || col < 0 || col >= 5) return null;
     return [row, col];
   }, []);
 
-  const paint = useCallback((clientX: number, clientY: number) => {
+  const paintCell = useCallback((clientX: number, clientY: number) => {
     if (!isPaintingRef.current || paintModeRef.current === null) return;
     const cell = getCellFromPoint(clientX, clientY);
     if (!cell) return;
     const [row, col] = cell;
-    if (piece.grid[row][col] !== paintModeRef.current) {
-      const newGrid = piece.grid.map(r => [...r]);
+    if (gridRef.current[row][col] !== paintModeRef.current) {
+      const newGrid = gridRef.current.map(r => [...r]);
       newGrid[row][col] = paintModeRef.current!;
       onChange(newGrid);
     }
-  }, [piece.grid, getCellFromPoint, onChange]);
+  }, [getCellFromPoint, onChange]);
 
-  const onMouseDown = useCallback((e: React.MouseEvent, row: number, col: number) => {
-    e.preventDefault();
-    const newValue = piece.grid[row][col] ? 0 : 1;
+  // Mouse
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    const cell = getCellFromPoint(e.clientX, e.clientY);
+    if (!cell) return;
+    const [row, col] = cell;
+    const newValue = gridRef.current[row][col] ? 0 : 1;
     paintModeRef.current = newValue;
     isPaintingRef.current = true;
-    const newGrid = piece.grid.map(r => [...r]);
+    const newGrid = gridRef.current.map(r => [...r]);
     newGrid[row][col] = newValue;
     onChange(newGrid);
-  }, [piece.grid, onChange]);
+  }, [getCellFromPoint, onChange]);
 
-  const onMouseEnter = useCallback((e: React.MouseEvent) => {
-    paint(e.clientX, e.clientY);
-  }, [paint]);
+  const onMouseMove = useCallback((e: React.MouseEvent) => {
+    paintCell(e.clientX, e.clientY);
+  }, [paintCell]);
 
   const stopPainting = useCallback(() => {
     isPaintingRef.current = false;
     paintModeRef.current = null;
   }, []);
 
-  const onTouchStart = useCallback((e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    const cell = getCellFromPoint(touch.clientX, touch.clientY);
-    if (!cell) return;
-    const [row, col] = cell;
-    const newValue = piece.grid[row][col] ? 0 : 1;
-    paintModeRef.current = newValue;
-    isPaintingRef.current = true;
-    const newGrid = piece.grid.map(r => [...r]);
-    newGrid[row][col] = newValue;
-    onChange(newGrid);
-  }, [piece.grid, getCellFromPoint, onChange]);
+  // Touch — non-passive for Chrome mobile fix
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
 
-  const onTouchMove = useCallback((e: React.TouchEvent) => {
-    e.preventDefault();
-    paint(e.touches[0].clientX, e.touches[0].clientY);
-  }, [paint]);
+    const onTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      const cell = getCellFromPoint(touch.clientX, touch.clientY);
+      if (!cell) return;
+      const [row, col] = cell;
+      const newValue = gridRef.current[row][col] ? 0 : 1;
+      paintModeRef.current = newValue;
+      isPaintingRef.current = true;
+      const newGrid = gridRef.current.map(r => [...r]);
+      newGrid[row][col] = newValue;
+      onChange(newGrid);
+    };
 
-  const count = piece.grid.flat().filter(Boolean).length;
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault(); // non-passive — prevents scroll interrupting draw
+      paintCell(e.touches[0].clientX, e.touches[0].clientY);
+    };
+
+    const onTouchEnd = () => {
+      isPaintingRef.current = false;
+      paintModeRef.current = null;
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [getCellFromPoint, onChange, paintCell]);
 
   return (
     <div
       ref={containerRef}
-      className="select-none touch-none w-full"
-      style={{ cursor: 'crosshair', aspectRatio: '1' }}
-      onMouseLeave={stopPainting}
+      className="select-none w-full"
+      style={{ cursor: 'crosshair', touchAction: 'none', aspectRatio: '1' }}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
       onMouseUp={stopPainting}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={stopPainting}
+      onMouseLeave={stopPainting}
     >
       <div className="grid w-full h-full" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: '2px' }}>
         {piece.grid.map((row, r) =>
           row.map((cell, c) => (
             <div
               key={`${r}-${c}`}
-              onMouseDown={(e) => onMouseDown(e, r, c)}
-              onMouseEnter={onMouseEnter}
               className={`
-                aspect-square rounded-[3px] border transition-all duration-75
+                aspect-square rounded-[3px] border transition-colors duration-75
                 ${cell
                   ? `${colorClass} border-orange-400/40 shadow-sm`
-                  : 'bg-[#1a1f3a] border-[#2a2f4a] hover:border-orange-400/20'
+                  : 'bg-[#1a1f3a] border-[#2a2f4a]'
                 }
               `}
             />
@@ -145,8 +161,7 @@ export default function PieceEditor({ pieces, onChange }: PieceEditorProps) {
   };
 
   const updateGrid = (idx: number, grid: number[][]) => {
-    const updated = pieces.map((p, i) => i === idx ? { ...p, grid } : p);
-    onChange(updated);
+    onChange(pieces.map((p, i) => i === idx ? { ...p, grid } : p));
   };
 
   return (
@@ -160,36 +175,51 @@ export default function PieceEditor({ pieces, onChange }: PieceEditorProps) {
         )}
       </div>
 
-      {/* Pieces in a responsive row — side by side on mobile */}
+      {/* Mobile: 1 column (vertical). sm+: 2 col. lg+: 3 col */}
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {pieces.map((piece, pieceIdx) => {
           const colorClass = PIECE_COLORS[pieceIdx % PIECE_COLORS.length];
           const count = piece.grid.flat().filter(Boolean).length;
 
           return (
-            <div key={piece.id} className="panel p-2 sm:p-3 border border-orange-400/10 rounded-xl">
+            <div key={piece.id} className="panel p-3 border border-orange-400/10 rounded-xl">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
                   <div className={`w-3 h-3 rounded ${colorClass}`} />
-                  <span className="text-xs font-medium text-white">P{pieceIdx + 1}</span>
-                  <span className="text-xs text-[#5a6080]">({count})</span>
+                  <span className="text-xs font-medium text-white">Piece {pieceIdx + 1}</span>
+                  <span className="text-xs text-[#5a6080]">({count} cells)</span>
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => clearPiece(pieceIdx)} className="text-[10px] px-1.5 py-0.5 rounded border border-white/10 text-[#a0a8d4] hover:border-cyan-400/30 transition-all">✕</button>
+                  <button
+                    onClick={() => clearPiece(pieceIdx)}
+                    className="text-[10px] px-1.5 py-0.5 rounded border border-white/10 text-[#a0a8d4] hover:border-cyan-400/30 transition-all"
+                  >
+                    Clear
+                  </button>
                   {pieces.length > 1 && (
-                    <button onClick={() => removePiece(pieceIdx)} className="text-[10px] px-1.5 py-0.5 rounded border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-all">🗑</button>
+                    <button
+                      onClick={() => removePiece(pieceIdx)}
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-red-400/20 text-red-400 hover:bg-red-400/10 transition-all"
+                    >
+                      ✕
+                    </button>
                   )}
                 </div>
               </div>
 
-              <PieceGrid
-                piece={piece}
-                pieceIdx={pieceIdx}
-                colorClass={colorClass}
-                onChange={(grid) => updateGrid(pieceIdx, grid)}
-              />
-
-              <p className="text-[10px] text-[#5a6080] mt-1.5 text-center">slide to draw</p>
+              {/* On mobile: show grid beside the piece to save height */}
+              <div className="flex sm:block gap-3 items-start">
+                <div className="w-28 sm:w-full flex-shrink-0">
+                  <PieceGrid
+                    piece={piece}
+                    colorClass={colorClass}
+                    onChange={(grid) => updateGrid(pieceIdx, grid)}
+                  />
+                </div>
+                <p className="text-[10px] text-[#5a6080] mt-1 sm:text-center">
+                  Slide jari untuk menggambar bentuk
+                </p>
+              </div>
             </div>
           );
         })}

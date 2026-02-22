@@ -198,7 +198,7 @@ function SolutionCard({ solution, index, onApply }: SolutionCardProps) {
             </div>
           </div>
 
-          <div className="flex gap-4 overflow-x-auto pb-2">
+          <div className="flex flex-col sm:flex-row gap-4 overflow-x-auto pb-2">
             {solution.steps.map((step, si) => (
               <div
                 key={si}
